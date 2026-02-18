@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #F4F7FA !important;
+    --foreground: #1E293B !important;
+  }
+
+  body {
+    background-color: #F4F7FA !important;
+    color: #1E293B !important;
+    font-family: 'Inter', sans-serif;
+  }
+}
