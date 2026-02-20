@@ -1,46 +1,53 @@
-import { pool } from '@/lib/db';
+import { sql } from '@/lib/db'; // Import sql dari lib/db.ts
 import { NextResponse } from 'next/server';
 
-// 1. AMBIL SEMUA DATA (Sama kayak cur.execute("SELECT * FROM bahan_baku..."))
+// 1. AMBIL SEMUA DATA
 export async function GET() {
   try {
-    const [rows] = await pool.query('SELECT * FROM bahan ORDER BY kategori, nama_bahan');
+    // Postgres.js tidak perlu release connection, otomatis dikelola
+    const rows = await sql`SELECT * FROM bahan ORDER BY kategori, nama_bahan`;
+    
     return NextResponse.json(rows);
-  } catch (error) {
-    return NextResponse.json({ error: 'Gagal ambil data' }, { status: 500 });
+  } catch (error: any) {
+    console.error("GET Error:", error);
+    return NextResponse.json({ error: 'Gagal ambil data: ' + error.message }, { status: 500 });
   }
 }
 
-// 2. SIMPAN DATA (Logika Update vs Insert sesuai Python lu)
+// 2. SIMPAN DATA (Logika Update vs Insert)
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { nama_bahan, kategori, harga_beli, stok, satuan_db } = body;
+    const { nama_bahan, kategori, harga_beli, stok, satuan_db } = await request.json();
 
-    // Cek dulu apakah nama bahan sudah ada di database (Case Insensitive)
-    const [existing]: any = await pool.query(
-      'SELECT id_bahan, stok FROM bahan WHERE LOWER(nama_bahan) = LOWER(?)', 
-      [nama_bahan]
-    );
+    // Postgres: Gunakan ILIKE untuk case-insensitive atau LOWER()
+    const existing = await sql`
+      SELECT id_bahan, stok 
+      FROM bahan 
+      WHERE LOWER(nama_bahan) = LOWER(${nama_bahan})
+    `;
 
     if (existing.length > 0) {
-      // Sesuai Python: UPDATE bahan SET stok_sekarang = stok_sekarang + %s, harga_beli_terakhir = %s
+      // UPDATE: Tambah stok dan perbarui harga
       const newStok = Number(existing[0].stok) + Number(stok);
-      await pool.query(
-        'UPDATE bahan SET stok = ?, harga_beli = ?, kategori = ? WHERE id_bahan = ?',
-        [newStok, harga_beli, kategori, existing[0].id_bahan]
-      );
+      
+      await sql`
+        UPDATE bahan 
+        SET stok = ${newStok}, harga_beli = ${harga_beli}, kategori = ${kategori} 
+        WHERE id_bahan = ${existing[0].id_bahan}
+      `;
+      
       return NextResponse.json({ message: 'Stok berhasil ditambahkan!' });
     } else {
-      // Sesuai Python: INSERT INTO bahan_baku (...) VALUES (...)
-      await pool.query(
-        'INSERT INTO bahan (nama_bahan, kategori, harga_beli, stok, satuan_db) VALUES (?, ?, ?, ?, ?)',
-        [nama_bahan, kategori, harga_beli, stok, satuan_db]
-      );
+      // INSERT: Bahan baru
+      await sql`
+        INSERT INTO bahan (nama_bahan, kategori, harga_beli, stok, satuan_db) 
+        VALUES (${nama_bahan}, ${kategori}, ${harga_beli}, ${stok}, ${satuan_db})
+      `;
+      
       return NextResponse.json({ message: 'Bahan baru berhasil didaftarkan!' });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("API Error:", error);
-    return NextResponse.json({ error: 'Gagal memproses data' }, { status: 500 });
+    return NextResponse.json({ error: 'Gagal memproses data: ' + error.message }, { status: 500 });
   }
 }
